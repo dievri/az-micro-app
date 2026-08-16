@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/gateway/">
+    <Project Path="gateway/Gateway.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/Common/Common.csproj" />
+    <Project Path="shared/Contracts/Contracts.csproj" />
+  </Folder>
+</Solution>

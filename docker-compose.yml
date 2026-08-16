@@ -1,0 +1,92 @@
+# Local development stack for the Azure Container Apps microservices lab.
+#
+#   docker compose up --build
+#
+# Only the gateway is meant to be public. The internal gRPC ports are exposed
+# here purely for local debugging; in Azure Container Apps they would use
+# internal ingress instead.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bookings
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bookings"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  users:
+    build:
+      context: .
+      dockerfile: users/Dockerfile
+    environment:
+      USERS_GRPC_PORT: "50051"
+      # OpenTelemetry is off by default; set OTEL_ENABLED=true and an endpoint
+      # to turn it on without any code change.
+      OTEL_ENABLED: "false"
+    ports:
+      - "50051:50051"   # local debugging only
+
+  hotels:
+    build:
+      context: .
+      dockerfile: hotels/Dockerfile
+    environment:
+      HOTELS_GRPC_PORT: "50052"
+      OTEL_ENABLED: "false"
+    ports:
+      - "50052:50052"   # local debugging only
+
+  bookings:
+    build:
+      context: .
+      dockerfile: bookings/Dockerfile
+    environment:
+      BOOKINGS_GRPC_PORT: "50053"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: bookings
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      OTEL_ENABLED: "false"
+    ports:
+      - "50053:50053"   # local debugging only
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      GATEWAY_HTTP_PORT: "8080"
+      USERS_GRPC_HOST: users
+      USERS_GRPC_PORT: "50051"
+      HOTELS_GRPC_HOST: hotels
+      HOTELS_GRPC_PORT: "50052"
+      BOOKINGS_GRPC_HOST: bookings
+      BOOKINGS_GRPC_PORT: "50053"
+      OTEL_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - users
+      - hotels
+      - bookings
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

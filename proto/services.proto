@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+option csharp_namespace = "AzMicroApp.Protos";
+
+package azmicroapp;
+
+// ---------------------------------------------------------------------------
+// User service
+// ---------------------------------------------------------------------------
+service UserService {
+  rpc GetUser (UserRequest) returns (User);
+}
+
+message UserRequest {
+  string user_id = 1;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Hotel service
+// ---------------------------------------------------------------------------
+service HotelService {
+  rpc GetHotel (HotelRequest) returns (Hotel);
+}
+
+message HotelRequest {
+  string hotel_id = 1;
+}
+
+message Hotel {
+  string id = 1;
+  string name = 2;
+  string city = 3;
+  string country = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Booking service
+// ---------------------------------------------------------------------------
+service BookingService {
+  rpc GetBooking (BookingRequest) returns (Booking);
+  rpc CreateBooking (CreateBookingRequest) returns (Booking);
+}
+
+message BookingRequest {
+  string booking_id = 1;
+}
+
+message CreateBookingRequest {
+  string user_id = 1;
+  string hotel_id = 2;
+  string check_in = 3;   // ISO-8601 date, e.g. 2026-08-16
+  string check_out = 4;  // ISO-8601 date
+}
+
+message Booking {
+  string id = 1;
+  string user_id = 2;
+  string hotel_id = 3;
+  string check_in = 4;
+  string check_out = 5;
+  string status = 6;
+}
