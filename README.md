@@ -219,8 +219,13 @@ Environment:
 
 Для переходу в Azure змінюються **лише змінні середовища**, не код:
 
-- `USERS_GRPC_HOST`, `HOTELS_GRPC_HOST`, `BOOKINGS_GRPC_HOST` вказуються на
-  внутрішні DNS-імена Container Apps (напр. `users.internal.<env>.<region>.azurecontainerapps.io`).
+- `USERS_GRPC_HOST`, `HOTELS_GRPC_HOST`, `BOOKINGS_GRPC_HOST` вказуються на ім'я
+  Container App у межах Container Apps Environment. Вбудований DNS середовища
+  (service discovery платформи, Envoy під капотом) сам резолвить його у потрібні
+  репліки — для сервісів в одному середовищі достатньо короткого імені (напр.
+  `users`), або повний внутрішній FQDN `users.internal.<env-default-domain>`.
+  Код нічого про discovery не знає — лише читає адресу з env. Для gRPC internal
+  ingress має бути з `transport: http2`.
 - `POSTGRES_*` вказуються на Azure Database for PostgreSQL.
 - `OTEL_ENABLED=true` + `OTEL_EXPORTER_OTLP_ENDPOINT` підключають Azure Monitor /
   Application Insights через OTLP.
