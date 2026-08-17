@@ -35,7 +35,7 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
+          dockerfilePath: gateway/Dockerfile
           _targetLabelKey_: _targetLabel_
           registryUrl: gallensaintaigo-bqavbdfyg6gucyh6.azurecr.io
           registryUsername: ${{ secrets.GATEWAY_REGISTRY_USERNAME }}
