@@ -3,8 +3,8 @@ using AzMicroApp.Bookings.Services;
 using AzMicroApp.Common;
 using Grpc.HealthCheck;
 using Grpc.Health.V1;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using OpenTelemetry.Trace;
 
 const string ServiceName = "bookings";
@@ -20,18 +20,30 @@ builder.WebHost.ConfigureKestrel(options =>
         Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2);
 });
 
-// PostgreSQL connection string assembled purely from environment variables.
-var connString = new NpgsqlConnectionStringBuilder
+// Azure SQL connection string. Two modes, both driven by environment variables:
+//   1. If SQL_CONNECTION_STRING is set, use it verbatim (e.g. local dev with a
+//      full connection string, or SQL auth).
+//   2. Otherwise assemble a passwordless connection string that authenticates
+//      via the container's Managed Identity — no secrets anywhere. This is the
+//      Azure production path.
+var connString = Environment.GetEnvironmentVariable("SQL_CONNECTION_STRING");
+if (string.IsNullOrWhiteSpace(connString))
 {
-    Host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost",
-    Port = int.Parse(Environment.GetEnvironmentVariable("POSTGRES_PORT") ?? "5432"),
-    Database = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "bookings",
-    Username = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "postgres",
-    Password = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "postgres",
-}.ConnectionString;
+    var b = new SqlConnectionStringBuilder
+    {
+        DataSource = Environment.GetEnvironmentVariable("SQL_SERVER")        // e.g. myserver.database.windows.net
+                     ?? "localhost",
+        InitialCatalog = Environment.GetEnvironmentVariable("SQL_DATABASE") ?? "bookings",
+        Encrypt = true,
+        // Passwordless: SqlClient acquires an Entra token for the container's
+        // Managed Identity. No user/password is ever supplied.
+        Authentication = SqlAuthenticationMethod.ActiveDirectoryManagedIdentity,
+    };
+    connString = b.ConnectionString;
+}
 
 builder.Services.AddDbContext<BookingsDbContext>(options =>
-    options.UseNpgsql(connString));
+    options.UseSqlServer(connString));
 
 builder.Services.AddGrpc(options =>
 {
