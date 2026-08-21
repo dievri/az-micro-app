@@ -1,6 +1,9 @@
 using AzMicroApp.Bookings.Data;
+using AzMicroApp.Bookings.Messaging;
 using AzMicroApp.Bookings.Services;
 using AzMicroApp.Common;
+using Azure.Identity;
+using Azure.Messaging.ServiceBus;
 using Grpc.HealthCheck;
 using Grpc.Health.V1;
 using Microsoft.Data.SqlClient;
@@ -44,6 +47,22 @@ if (string.IsNullOrWhiteSpace(connString))
 
 builder.Services.AddDbContext<BookingsDbContext>(options =>
     options.UseSqlServer(connString));
+
+// Service Bus client (passwordless via Managed Identity). Registered only when
+// SERVICEBUS_NAMESPACE is provided; otherwise the publisher becomes a no-op so
+// the service still runs locally without Service Bus.
+var sbNamespace = Environment.GetEnvironmentVariable("SERVICEBUS_NAMESPACE"); // e.g. galendewagen-sebuss.servicebus.windows.net
+if (!string.IsNullOrWhiteSpace(sbNamespace))
+{
+    builder.Services.AddSingleton(_ =>
+        new ServiceBusClient(sbNamespace, new DefaultAzureCredential()));
+}
+else
+{
+    // No namespace configured — register a null client so DI can resolve the publisher.
+    builder.Services.AddSingleton<ServiceBusClient?>(_ => null);
+}
+builder.Services.AddSingleton<BookingEventPublisher>();
 
 builder.Services.AddGrpc(options =>
 {

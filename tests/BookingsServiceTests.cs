@@ -1,4 +1,5 @@
 using AzMicroApp.Bookings.Data;
+using AzMicroApp.Bookings.Messaging;
 using AzMicroApp.Bookings.Services;
 using AzMicroApp.Protos;
 using Grpc.Core;
@@ -18,6 +19,10 @@ public class BookingsServiceTests
         return new BookingsDbContext(options);
     }
 
+    // No-op publisher: null Service Bus client means publish is skipped.
+    private static BookingEventPublisher NoOpPublisher() =>
+        new(client: null, NullLogger<BookingEventPublisher>.Instance);
+
     [Fact]
     public async Task GetBooking_ReturnsExisting()
     {
@@ -29,7 +34,7 @@ public class BookingsServiceTests
         });
         await db.SaveChangesAsync();
 
-        var svc = new BookingGrpcService(db, NullLogger<BookingGrpcService>.Instance);
+        var svc = new BookingGrpcService(db, NoOpPublisher(), NullLogger<BookingGrpcService>.Instance);
         var booking = await svc.GetBooking(new BookingRequest { BookingId = "b1" }, TestServerCallContext.Create());
 
         Assert.Equal("b1", booking.Id);
@@ -41,7 +46,7 @@ public class BookingsServiceTests
     public async Task GetBooking_Unknown_ThrowsNotFound()
     {
         using var db = NewDb(nameof(GetBooking_Unknown_ThrowsNotFound));
-        var svc = new BookingGrpcService(db, NullLogger<BookingGrpcService>.Instance);
+        var svc = new BookingGrpcService(db, NoOpPublisher(), NullLogger<BookingGrpcService>.Instance);
 
         var ex = await Assert.ThrowsAsync<RpcException>(() =>
             svc.GetBooking(new BookingRequest { BookingId = "missing" }, TestServerCallContext.Create()));
@@ -53,7 +58,7 @@ public class BookingsServiceTests
     public async Task CreateBooking_PersistsAndReturns()
     {
         using var db = NewDb(nameof(CreateBooking_PersistsAndReturns));
-        var svc = new BookingGrpcService(db, NullLogger<BookingGrpcService>.Instance);
+        var svc = new BookingGrpcService(db, NoOpPublisher(), NullLogger<BookingGrpcService>.Instance);
 
         var created = await svc.CreateBooking(new CreateBookingRequest
         {
@@ -69,7 +74,7 @@ public class BookingsServiceTests
     public async Task CreateBooking_MissingFields_ThrowsInvalidArgument()
     {
         using var db = NewDb(nameof(CreateBooking_MissingFields_ThrowsInvalidArgument));
-        var svc = new BookingGrpcService(db, NullLogger<BookingGrpcService>.Instance);
+        var svc = new BookingGrpcService(db, NoOpPublisher(), NullLogger<BookingGrpcService>.Instance);
 
         var ex = await Assert.ThrowsAsync<RpcException>(() =>
             svc.CreateBooking(new CreateBookingRequest { UserId = "u2" }, TestServerCallContext.Create()));

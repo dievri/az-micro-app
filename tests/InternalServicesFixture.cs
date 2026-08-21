@@ -33,6 +33,10 @@ public sealed class InternalServicesFixture : IAsyncLifetime
                 services.AddGrpc();
                 services.AddDbContext<BookingsDbContext>(o =>
                     o.UseInMemoryDatabase("integration-bookings"));
+                // No-op publisher for tests (no Service Bus client).
+                services.AddSingleton(sp => new AzMicroApp.Bookings.Messaging.BookingEventPublisher(
+                    client: null,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AzMicroApp.Bookings.Messaging.BookingEventPublisher>>()));
             });
             webHost.Configure(app =>
             {

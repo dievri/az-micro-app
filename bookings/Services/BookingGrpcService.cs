@@ -1,4 +1,6 @@
 using AzMicroApp.Bookings.Data;
+using AzMicroApp.Bookings.Messaging;
+using AzMicroApp.Common;
 using AzMicroApp.Protos;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
@@ -9,11 +11,16 @@ namespace AzMicroApp.Bookings.Services;
 public sealed class BookingGrpcService : BookingService.BookingServiceBase
 {
     private readonly BookingsDbContext _db;
+    private readonly BookingEventPublisher _publisher;
     private readonly ILogger<BookingGrpcService> _logger;
 
-    public BookingGrpcService(BookingsDbContext db, ILogger<BookingGrpcService> logger)
+    public BookingGrpcService(
+        BookingsDbContext db,
+        BookingEventPublisher publisher,
+        ILogger<BookingGrpcService> logger)
     {
         _db = db;
+        _publisher = publisher;
         _logger = logger;
     }
 
@@ -65,6 +72,13 @@ public sealed class BookingGrpcService : BookingService.BookingServiceBase
         await _db.SaveChangesAsync(context.CancellationToken);
 
         _logger.LogInformation("Booking created: {BookingId}", entity.Id);
+
+        // Publish a BookingCreated event (best-effort) after the booking is
+        // committed. Propagate the correlation id from the incoming gRPC metadata.
+        var requestId = context.RequestHeaders.GetValue(Correlation.MetadataKey);
+        await _publisher.PublishBookingCreatedAsync(
+            entity.Id, entity.UserId, entity.HotelId, requestId, context.CancellationToken);
+
         return ToProto(entity);
     }
 
