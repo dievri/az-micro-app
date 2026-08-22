@@ -22,8 +22,13 @@ public sealed class BookingEventPublisher
     {
         _logger = logger;
 
-        var queueName = Environment.GetEnvironmentVariable("SERVICEBUS_QUEUE") ?? "bookings";
-        _sender = client?.CreateSender(queueName);
+        // Send to a Topic if SERVICEBUS_TOPIC is set (fan-out to multiple
+        // subscriptions), otherwise fall back to a Queue. The sender API is
+        // identical for both — only the target entity name differs.
+        var target = Environment.GetEnvironmentVariable("SERVICEBUS_TOPIC")
+                     ?? Environment.GetEnvironmentVariable("SERVICEBUS_QUEUE")
+                     ?? "bookings";
+        _sender = client?.CreateSender(target);
     }
 
     public async Task PublishBookingCreatedAsync(

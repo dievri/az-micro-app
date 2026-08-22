@@ -27,7 +27,10 @@ using var loggerFactory = LoggerFactory.Create(b =>
 var logger = loggerFactory.CreateLogger(ServiceName);
 
 var sbNamespace = Environment.GetEnvironmentVariable("SERVICEBUS_NAMESPACE");
+var topicName = Environment.GetEnvironmentVariable("SERVICEBUS_TOPIC");
+var subscription = Environment.GetEnvironmentVariable("SERVICEBUS_SUBSCRIPTION");
 var queueName = Environment.GetEnvironmentVariable("SERVICEBUS_QUEUE") ?? "bookings";
+var consumerRole = Environment.GetEnvironmentVariable("CONSUMER_ROLE") ?? "notifications";
 
 if (string.IsNullOrWhiteSpace(sbNamespace))
 {
@@ -36,13 +39,27 @@ if (string.IsNullOrWhiteSpace(sbNamespace))
 }
 
 await using var client = new ServiceBusClient(sbNamespace, new DefaultAzureCredential());
-await using var receiver = client.CreateReceiver(queueName, new ServiceBusReceiverOptions
-{
-    ReceiveMode = ServiceBusReceiveMode.PeekLock,
-});
 
-logger.LogInformation("{Service} started, draining queue '{Queue}' on {Namespace}",
-    ServiceName, queueName, sbNamespace);
+// Read from a Topic subscription (fan-out) when both SERVICEBUS_TOPIC and
+// SERVICEBUS_SUBSCRIPTION are set; otherwise read from a Queue. The receiver
+// API and processing loop below are identical for both.
+var options = new ServiceBusReceiverOptions { ReceiveMode = ServiceBusReceiveMode.PeekLock };
+ServiceBusReceiver receiver;
+string source;
+if (!string.IsNullOrWhiteSpace(topicName) && !string.IsNullOrWhiteSpace(subscription))
+{
+    receiver = client.CreateReceiver(topicName, subscription, options);
+    source = $"topic '{topicName}' subscription '{subscription}'";
+}
+else
+{
+    receiver = client.CreateReceiver(queueName, options);
+    source = $"queue '{queueName}'";
+}
+await using var _receiver = receiver;
+
+logger.LogInformation("{Service} started, draining {Source} on {Namespace}",
+    ServiceName, source, sbNamespace);
 
 var processed = 0;
 
@@ -63,8 +80,12 @@ while (true)
     {
         try
         {
-            // The event payload published by the bookings service.
-            var evt = JsonSerializer.Deserialize<BookingCreatedEvent>(message.Body.ToString());
+            // The event payload published by the bookings service. The publisher
+            // serializes with camelCase property names (bookingId, userId, ...),
+            // so deserialize case-insensitively to map them onto the record.
+            var evt = JsonSerializer.Deserialize<BookingCreatedEvent>(
+                message.Body.ToString(),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
             // Correlation id flows from the original HTTP request through gRPC
             // metadata, into the Service Bus message, and now into our logs.
@@ -73,9 +94,21 @@ while (true)
                 ["request_id"] = message.CorrelationId ?? "(none)"
             }))
             {
-                logger.LogInformation(
-                    "Sent booking-confirmation notification for booking {BookingId} to user {UserId} (hotel {HotelId})",
-                    evt?.BookingId, evt?.UserId, evt?.HotelId);
+                // The same image can act as different fan-out consumers depending
+                // on CONSUMER_ROLE (e.g. "notifications" vs "analytics"), each
+                // reacting to the SAME BookingCreated event in its own way.
+                if (consumerRole == "analytics")
+                {
+                    logger.LogInformation(
+                        "Recorded booking analytics: booking {BookingId}, user {UserId}, hotel {HotelId}",
+                        evt?.BookingId, evt?.UserId, evt?.HotelId);
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Sent booking-confirmation notification for booking {BookingId} to user {UserId} (hotel {HotelId})",
+                        evt?.BookingId, evt?.UserId, evt?.HotelId);
+                }
             }
 
             // Acknowledge successful processing: removes the message from the queue.
